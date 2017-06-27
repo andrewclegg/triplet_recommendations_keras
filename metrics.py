@@ -52,7 +52,7 @@ def precision_at_k(model, ground_truth, k, user_features=None, item_features=Non
     return sum(precisions) / len(precisions)
 
 
-def full_auc(model, ground_truth):
+def full_auc(model, ground_truth, item_features):
     """
     Measure AUC for model and ground truth on all items.
 
@@ -66,11 +66,17 @@ def full_auc(model, ground_truth):
 
     pid_array = np.arange(no_items, dtype=np.int32)
 
+    test_item_features = item_features[pid_array, :]
+
     scores = []
 
     for user_id, row in enumerate(ground_truth):
 
-        predictions = predict(model, user_id, pid_array)
+        predictions = model.predict({
+            'positive_item_input': pid_array,
+            'positive_tags': test_item_features,
+            'user_input': np.repeat(user_id, no_items)},
+            batch_size=no_items)
 
         true_pids = row.indices[row.data == 1]
 

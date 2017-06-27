@@ -79,7 +79,7 @@ def _build_interaction_matrix(rows, cols, data):
 
 def _get_movie_raw_metadata():
     """
-    Get raw lines of the genre file.
+    Get raw lines of the movies file.
     """
 
     path = _get_movielens_path()
@@ -91,6 +91,20 @@ def _get_movie_raw_metadata():
         return datafile.read('ml-100k/u.item').decode(errors='ignore').split('\n')
 
 
+def _get_genre_raw_metadata():
+    """
+    Get raw lines of the movies file.
+    """
+
+    path = _get_movielens_path()
+
+    if not os.path.isfile(path):
+        _download_movielens(path)
+
+    with zipfile.ZipFile(path) as datafile:
+        return datafile.read('ml-100k/u.genre').decode(errors='ignore').split('\n')
+
+
 def get_movielens_item_metadata(use_item_ids):
     """
     Build a matrix of genre features (no_items, no_features).
@@ -100,6 +114,7 @@ def get_movielens_item_metadata(use_item_ids):
 
     features = {}
     genre_set = set()
+    max_genres = 0
 
     for line in _get_movie_raw_metadata():
 
@@ -121,14 +136,12 @@ def get_movielens_item_metadata(use_item_ids):
             genre_set.add(genre_id)
 
         features[item_id] = genres
-
-    mat = sp.lil_matrix((len(features) + 1,
-                         len(genre_set)),
-                        dtype=np.int32)
-
+        if len(genres) > max_genres:
+            max_genres = len(genres)
+    
+    mat = np.zeros((len(features) + 1, max_genres), dtype=np.uint32)
     for item_id, genre_ids in features.items():
-        for genre_id in genre_ids:
-            mat[item_id, genre_id] = 1
+        mat[item_id, :len(genre_ids)] = genre_ids
 
     return mat
 
