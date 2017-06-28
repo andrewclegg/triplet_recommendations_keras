@@ -52,6 +52,9 @@ class BprLoss(Layer):
 
 class ZeroMaskedEntries(Layer):
     """
+    Taken from this github issue to work around a Keras limitation:
+    https://github.com/fchollet/keras/issues/1579#issuecomment-238644596
+
     This layer is called after an Embedding layer.
     It zeros out all of the masked-out embeddings.
     It also swallows the mask without passing it on.
@@ -82,17 +85,25 @@ class ZeroMaskedEntries(Layer):
         return None
 
 
+def zero_mask(embeddings):
+    return ZeroMaskedEntries()(embeddings)
+
+
 def mask_aware_mean(x):
+
+    """
+    Taken from same github issue as above.
+    """
+
     # recreate the masks - all zero rows have been masked
     mask = K.not_equal(K.sum(K.abs(x), axis=2, keepdims=True), 0)
 
     # number of that rows are not all zeros
     n = K.sum(K.cast(mask, 'float32'), axis=1, keepdims=False)
+    n = K.maximum(n, 1.0)
     
     # compute mask-aware mean of x, or all zeroes if no rows present
     x_mean = K.sum(x, axis=1, keepdims=False) / n
-    x_mean = tf.check_numerics(x_mean,
-        'unexpected nans found in mean -- check at least one entry is present')
 
     return x_mean
 
