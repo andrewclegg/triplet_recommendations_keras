@@ -3,6 +3,7 @@ from __future__ import print_function
 import itertools
 import os
 import zipfile
+import shutil
 
 import numpy as np
 
@@ -179,3 +180,47 @@ def get_movielens_data():
 
     return (_build_interaction_matrix(rows, cols, _parse(train_data)),
             _build_interaction_matrix(rows, cols, _parse(test_data)))
+
+
+def extract_tensorboard_metadata(log_dir):
+
+    # Clean out and create the log dir if necessary
+    shutil.rmtree(
+        log_dir,
+        onerror=lambda f, p, e: print("Couldn't remove %s: %s" % (p, e)))
+
+    try:
+        os.makedirs(log_dir)
+    except Exception, e:
+        print("Couldn't create %s: %s" % (log_dir, e))
+
+    items_metadata = os.path.join(log_dir, 'items.txt')
+    with open(items_metadata, 'w') as f:
+        # There's no movie 0, but we need to add a dummy line otherwise
+        # they won't line up with the embedding table
+        print('0 - None', file=f)
+        for line in _get_movie_raw_metadata():
+            fields = line.split('|')
+            if len(fields) > 1:
+                print('%s - %s' % (fields[0], fields[1]), file=f)
+
+    tags_metadata = os.path.join(log_dir, 'tags.txt')
+    with open(tags_metadata, 'w') as f:
+        # No need for dummy '0' as above -- this is already provided
+        for line in _get_genre_raw_metadata():
+            fields = line.split('|')
+            if len(fields) > 1:
+                # Note: fields are opposite way round from movies
+                print('%s - %s' % (fields[1], fields[0]), file=f)
+
+    return items_metadata, tags_metadata
+
+
+def get_movie_names():
+    output = [u'None']
+    for line in _get_movie_raw_metadata():
+        fields = line.split('|')
+        if len(fields) > 1:
+            output.append(fields[1])
+    return output
+
