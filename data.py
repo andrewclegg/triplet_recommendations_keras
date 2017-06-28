@@ -12,7 +12,16 @@ import requests
 import scipy.sparse as sp
 
 
+"""
+Note that the data loading functions here assume we're using MovieLens 100K
+which is tiny by today's standard.
+
+No attempt has been made to optimize these for speed as this isn't an issue!
+"""
+
+
 def _get_movielens_path():
+
     """
     Get path to the movielens dataset file.
     """
@@ -22,6 +31,7 @@ def _get_movielens_path():
 
 
 def _download_movielens(dest_path):
+
     """
     Download the dataset.
     """
@@ -37,6 +47,7 @@ def _download_movielens(dest_path):
 
 
 def _get_raw_movielens_data():
+
     """
     Return the raw lines of the train and test files.
     """
@@ -52,6 +63,7 @@ def _get_raw_movielens_data():
 
 
 def _parse(data):
+
     """
     Parse movielens dataset lines.
     """
@@ -68,6 +80,22 @@ def _parse(data):
 
 def _build_interaction_matrix(rows, cols, data):
 
+    """
+    Build a binary interaction matrix from the data parsed out of the
+    MovieLens files. MovieLens actually uses star ratings, but for
+    simplicity, we're going to threshold them and treat this as a
+    binary problem (positive/negative).
+
+    This is more in tune with real life problems, because implicit
+    feedback or simple binary responses are very often the best data
+    you can get.
+
+    TODO experiment with predicting ratings directly
+
+    Returns a sparse interaction matrix in COO format:
+    (user_id, item_id, 1)
+    """
+
     mat = sp.lil_matrix((rows, cols), dtype=np.int32)
 
     for uid, iid, rating, timestamp in data:
@@ -79,6 +107,7 @@ def _build_interaction_matrix(rows, cols, data):
 
 
 def _get_movie_raw_metadata():
+
     """
     Get raw lines of the movies file.
     """
@@ -93,8 +122,9 @@ def _get_movie_raw_metadata():
 
 
 def _get_genre_raw_metadata():
+
     """
-    Get raw lines of the movies file.
+    Get raw lines of the genre tags file.
     """
 
     path = _get_movielens_path()
@@ -106,15 +136,19 @@ def _get_genre_raw_metadata():
         return datafile.read('ml-100k/u.genre').decode(errors='ignore').split('\n')
 
 
-def get_movielens_item_metadata(use_item_ids):
-    """
-    Build a matrix of genre features (no_items, no_features).
+def get_movielens_item_metadata():
 
-    If use_item_ids is True, per-item feeatures will also be used.
+    """
+    Build a matrix of genre tags.
+
+    Returns a dense matrix with one row per item, with width equal
+    to the maximum number of features found in a single item.
+    Each row of the matrix contains item IDs, with order unimportant;
+    the rows are padded with zeros where necessary. This is fine
+    because there is no genre with ID 0.
     """
 
     features = {}
-    genre_set = set()
     max_genres = 0
 
     for line in _get_movie_raw_metadata():
@@ -129,13 +163,6 @@ def get_movielens_item_metadata(use_item_ids):
                   zip(range(len(splt[5:])), splt[5:])
                   if int(val) > 0]
 
-        if use_item_ids:
-            # Add item-specific features too
-            genres.append(item_id)
-
-        for genre_id in genres:
-            genre_set.add(genre_id)
-
         features[item_id] = genres
         if len(genres) > max_genres:
             max_genres = len(genres)
@@ -147,20 +174,32 @@ def get_movielens_item_metadata(use_item_ids):
     return mat
 
 
-def get_dense_triplets(uids, pids, nids, num_users, num_items):
-
-    user_identity = np.identity(num_users)
-    item_identity = np.identity(num_items)
-
-    return user_identity[uids], item_identity[pids], item_identity[nids]
-
-
 def get_triplets(mat):
+
+    """
+    Sample triplets for training, from a sparse interaction matrix.
+
+    For each positive interaction, it returns (as three individual
+    vectors): the user ID, the item ID, a random other item ID.
+
+    You can use these as the user, positive item, and negative item
+    inputs for training the triplet model.
+
+    Note that this adds some noise to the training data as there's
+    some probability that the 'negative' item is actually a positive
+    item (or even the *same* item). We're not actually sampling
+    them just from the negative set, as in the BPR paper, but from
+    all possible items. But this may not have a huge effect on model
+    training.
+
+    TODO implement BPR sampling scheme and see how well it does
+    """
 
     return mat.row, mat.col, np.random.randint(mat.shape[1], size=len(mat.row))
 
 
 def get_movielens_data():
+
     """
     Return (train_interactions, test_interactions).
     """
@@ -182,7 +221,17 @@ def get_movielens_data():
             _build_interaction_matrix(rows, cols, _parse(test_data)))
 
 
-def extract_tensorboard_metadata(log_dir):
+def init_tensorboard_metadata(log_dir):
+
+    """
+    Write out text files containing item and tag names into the
+    directory provided. Check it exists and it's empty first --
+    NB any leftover data from a previous run will be deleted.
+
+    Doing this enables TensorBoard to label the visualizations.
+
+    Returns: the paths to the item and tag filenames.
+    """
 
     # Clean out and create the log dir if necessary
     shutil.rmtree(
@@ -217,6 +266,14 @@ def extract_tensorboard_metadata(log_dir):
 
 
 def get_movie_names():
+
+    """
+    Extract and return the movie names in order, inserting a dummy
+    movie 'None' at position 0.
+
+    Returns: a list of strings
+    """
+
     output = [u'None']
     for line in _get_movie_raw_metadata():
         fields = line.split('|')

@@ -10,6 +10,7 @@ Helper classes and functions for building the Keras model.
 
 
 class BprLoss(Layer):
+
     """
     Implementation of a loss function based on Bayesian Personalized Ranking:
     https://arxiv.org/abs/1205.2618 (Rendle et al 2012).
@@ -50,7 +51,22 @@ class BprLoss(Layer):
         return loss
 
 
+def identity_loss(y_true, y_pred):
+    """
+    The 'real' loss function for the triplet network is calculated by
+    the BprLoss layer, with the 'label' of a pair of items being
+    implied by which is positive and which is negative. But, Keras
+    still needs a loss function to train the model. So you need to pass
+    in a vector of all ones as the label, so this function returns the
+    BPR loss unchanged.
+
+    NEVER pass anything but a vector of all ones to the y_true param!
+    """
+    return K.mean(y_pred * y_true)
+
+
 class ZeroMaskedEntries(Layer):
+
     """
     Taken from this github issue to work around a Keras limitation:
     https://github.com/fchollet/keras/issues/1579#issuecomment-238644596
@@ -86,37 +102,45 @@ class ZeroMaskedEntries(Layer):
 
 
 def zero_mask(embeddings):
+    """
+    Just a convenience function to apply ZeroMaskedEntries
+    to the output of an embedding layer.
+    """
     return ZeroMaskedEntries()(embeddings)
 
 
-def mask_aware_mean(x):
+def mask_aware_mean(masked_embeddings):
 
     """
     Taken from same github issue as above.
+
+    Computes the mean of a set of embeddings that have been masked
+    out by ZeroMaskedEntries.
     """
 
     # recreate the masks - all zero rows have been masked
-    mask = K.not_equal(K.sum(K.abs(x), axis=2, keepdims=True), 0)
+    mask = K.not_equal(
+        K.sum(K.abs(masked_embeddings), axis=2, keepdims=True),
+        0)
 
-    # number of that rows are not all zeros
+    # number of that rows are not all zeros (min 1)
     n = K.sum(K.cast(mask, 'float32'), axis=1, keepdims=False)
     n = K.maximum(n, 1.0)
     
-    # compute mask-aware mean of x, or all zeroes if no rows present
-    x_mean = K.sum(x, axis=1, keepdims=False) / n
-
-    return x_mean
+    # compute mean of remaining rows, or all zeroes if no rows present
+    return K.sum(masked_embeddings, axis=1, keepdims=False) / n
 
 
 def mask_aware_mean_output_shape(input_shape):
+    """
+    Taken from same github issue as above.
+
+    Helper function to compute output shape, required by Lambda layer.
+    """
     shape = list(input_shape)
     assert len(shape) == 3 
     return (shape[0], shape[2])
 
-
-def identity_loss(y_true, y_pred):
-
-    return K.mean(y_pred * y_true)
 
 
 
