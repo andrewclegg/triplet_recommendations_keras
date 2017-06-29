@@ -2,3 +2,6 @@
 *.zip
 *.pyc
 .ipynb_checkpoints/
+.*.swp
+*.h5
+
